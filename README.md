@@ -131,10 +131,8 @@ EDASubagent/
 │   ├── edges.py          # Conditional routing logic
 │   └── tools.py          # Four EDA analysis tools
 ├── tui/
-│   └── app.py            # Textual TUI (planned, not yet implemented)
-└── docs/
-    ├── KagglerAssistant_Demo_PRD.md
-    └── *.csv             # Sample Kaggle competition data
+    └── app.py            # Textual TUI (planned, not yet implemented)
+
 ```
 
 ---
