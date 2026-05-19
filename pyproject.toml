@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+
+[project]
+name = "EDASubagent"
+version = "0.0.1"
+description = "EDA subagent for KagglerAsisstant"
+readme = "README.md"
+requires-python = ">=3.10"
+
+dependencies = [
+    "langgraph",
+    "langchain",
+    "httpx",
+    "pydantic",
+    "polars",
+    "dotenv"
+]
