@@ -11,10 +11,9 @@ readme = "README.md"
 requires-python = ">=3.10"
 
 dependencies = [
+    "langchain-core",
     "langgraph",
-    "langchain",
-    "httpx",
-    "pydantic",
+    "langchain-deepseek",
     "polars",
-    "dotenv"
+    "python-dotenv",
 ]
