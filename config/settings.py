@@ -47,9 +47,9 @@ def get_tool_llm(
         explore_schema,
         get_descriptive_stats,
         get_distribution,
-        get_pearson_correlation
+        correlation_analysis
     )  # 延迟导入，防止循环依赖
-    eda_tools = [explore_schema, get_descriptive_stats, get_distribution, get_pearson_correlation]
+    eda_tools = [explore_schema, get_descriptive_stats, get_distribution, correlation_analysis]
     llm = get_llm(model=model, temperature=temperature)
 
     return llm.bind_tools(eda_tools)

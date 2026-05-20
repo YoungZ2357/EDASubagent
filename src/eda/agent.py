@@ -14,16 +14,16 @@ from src.eda.tools import (
     explore_schema,
     get_descriptive_stats,
     get_distribution,
-    get_pearson_correlation,
+    correlation_analysis,
 )
 
-_tools = [explore_schema, get_descriptive_stats, get_distribution, get_pearson_correlation]
+_tools = [explore_schema, get_descriptive_stats, get_distribution, correlation_analysis]
 
 builder = StateGraph(EDAState)
 
 builder.add_node("init_schema", init_schema)
 builder.add_node("react_node", react_node)
-builder.add_node("tools", ToolNode(_tools))
+builder.add_node("tools", ToolNode(_tools, handle_tool_errors=True))
 
 builder.add_edge(START, "init_schema")
 builder.add_conditional_edges("init_schema", after_init_condition)

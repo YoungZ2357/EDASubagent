@@ -29,6 +29,164 @@ def _dumps(obj: dict | list) -> str:
     return json.dumps(obj, ensure_ascii=False)
 
 
+def _pearson(df: pl.DataFrame, col_a: str, col_b: str) -> float | None:
+    """连续 vs 连续：Pearson 相关系数。"""
+    val = df.select(pl.corr(col_a, col_b)).item()
+    return val
+
+
+def _cramers_v(df: pl.DataFrame, col_a: str, col_b: str) -> float | None:
+    """分类 vs 分类：Cramér's V。"""
+    pair_df = df.select([col_a, col_b]).drop_nulls()
+    n = pair_df.height
+    if n == 0:
+        return None
+
+    # 列联表
+    ct = pair_df.group_by([col_a, col_b]).agg(pl.len().alias("observed"))
+    row_totals = ct.group_by(col_a).agg(pl.col("observed").sum().alias("row_total"))
+    col_totals = ct.group_by(col_b).agg(pl.col("observed").sum().alias("col_total"))
+
+    ct = ct.join(row_totals, on=col_a).join(col_totals, on=col_b)
+    ct = ct.with_columns(
+        (pl.col("row_total") * pl.col("col_total") / n).alias("expected")
+    )
+
+    chi2 = ct.select(
+        ((pl.col("observed") - pl.col("expected")).pow(2) / pl.col("expected")).sum()
+    ).item()
+
+    r = pair_df.select(pl.col(col_a).n_unique()).item()
+    c = pair_df.select(pl.col(col_b).n_unique()).item()
+    min_dim = min(r, c) - 1
+
+    if min_dim == 0:
+        return None
+
+    return math.sqrt(chi2 / (n * min_dim))
+
+
+def _eta_squared(df: pl.DataFrame, cat_col: str, num_col: str) -> float | None:
+    """分类 vs 连续：Eta²（相关比）。"""
+    pair_df = df.select([cat_col, num_col]).drop_nulls()
+    if pair_df.height == 0:
+        return None
+
+    overall_mean = pair_df.select(pl.col(num_col).mean()).item()
+    if overall_mean is None:
+        return None
+
+    ss_total = pair_df.select(
+        ((pl.col(num_col) - overall_mean).pow(2)).sum()
+    ).item()
+
+    if ss_total == 0:
+        return None
+
+    groups = pair_df.group_by(cat_col).agg([
+        pl.col(num_col).mean().alias("group_mean"),
+        pl.len().alias("group_n"),
+    ])
+
+    ss_between = groups.select(
+        (pl.col("group_n") * (pl.col("group_mean") - overall_mean).pow(2)).sum()
+    ).item()
+
+    return ss_between / ss_total
+
+
+
+
+@tool
+def correlation_analysis(columns: list[str]) -> str:
+    """分析指定列之间的相关性。自动根据列类型选择统计方法：
+    - 连续 vs 连续：Pearson 相关系数（-1 到 1）
+    - 分类 vs 分类：Cramér's V（0 到 1）
+    - 分类 vs 连续：Eta²（0 到 1）
+
+    columns 必须是精确列名，至少 2 列。
+
+    使用情景：
+    - 用户询问列之间的相关性、关联程度或相关系数
+    - 用户想了解两个或多个变量之间的关系
+
+    不要使用此工具进行描述性统计或分布分析。"""
+    lf = get_lazy_frame()
+
+    if len(columns) < 2:
+        return _dumps({"error": "至少需要 2 列才能计算相关性。"})
+
+    schema = lf.collect_schema()
+    unknown = [c for c in columns if c not in schema.names()]
+    if unknown:
+        return _dumps({
+            "error": f"以下列名不存在：{unknown}",
+            "hint": "请先调用 explore_schema 确认列名。",
+        })
+
+    numeric_cols = [c for c in columns if schema[c].is_numeric()]
+    categorical_cols = [c for c in columns if not schema[c].is_numeric()]
+
+    df = lf.select(columns).collect()
+
+    results: dict[str, list] = {}
+
+    # 连续 vs 连续 → Pearson
+    pearson_pairs = []
+    for i in range(len(numeric_cols)):
+        for j in range(i + 1, len(numeric_cols)):
+            a, b = numeric_cols[i], numeric_cols[j]
+            val = _pearson(df, a, b)
+            pearson_pairs.append({
+                "column_a": a, "column_b": b, "value": _safe_val(val),
+            })
+    if pearson_pairs:
+        pearson_pairs.sort(key=lambda p: abs(p["value"] or 0), reverse=True)
+        results["pearson"] = pearson_pairs
+
+    # 分类 vs 分类 → Cramér's V
+    cramers_pairs = []
+    for i in range(len(categorical_cols)):
+        for j in range(i + 1, len(categorical_cols)):
+            a, b = categorical_cols[i], categorical_cols[j]
+            val = _cramers_v(df, a, b)
+            cramers_pairs.append({
+                "column_a": a, "column_b": b, "value": _safe_val(val),
+            })
+    if cramers_pairs:
+        cramers_pairs.sort(key=lambda p: abs(p["value"] or 0), reverse=True)
+        results["cramers_v"] = cramers_pairs
+
+    # 分类 vs 连续 → Eta²
+    eta_pairs = []
+    for cat in categorical_cols:
+        for num in numeric_cols:
+            val = _eta_squared(df, cat, num)
+            eta_pairs.append({
+                "column_a": cat, "column_b": num, "value": _safe_val(val),
+            })
+    if eta_pairs:
+        eta_pairs.sort(key=lambda p: abs(p["value"] or 0), reverse=True)
+        results["eta_squared"] = eta_pairs
+
+    if not results:
+        return _dumps({"error": "给定列的组合无法计算任何相关性。"})
+
+    return _dumps({
+        "column_types": {
+            c: "numeric" if c in numeric_cols else "categorical"
+            for c in columns
+        },
+        "method_descriptions": {
+            "pearson": "Pearson 相关系数，范围 -1 到 1，衡量线性相关强度",
+            "cramers_v": "Cramér's V，范围 0 到 1，衡量分类变量间的关联强度",
+            "eta_squared": "Eta²，范围 0 到 1，衡量分类变量对连续变量的解释力",
+        },
+        "results": results,
+    })
+
+
+
 @tool
 def explore_schema() -> str:
     """获取数据集的完整结构信息：列名称、数据类型、缺失数量、唯一值数量和示例值。
@@ -215,50 +373,3 @@ def get_distribution(column: str, bins: int = 10) -> str:
         })
 
 
-@tool
-def get_pearson_correlation(columns: list[str]) -> str:
-    """计算指定数值列之间的 Pearson 相关系数矩阵。columns 必须是精确列名。
-
-    使用情景：
-    - 用户询问列之间的相关性、关联程度或相关系数
-
-    不要使用此工具进行描述性统计或分布分析。"""
-    lf = get_lazy_frame()
-
-    if len(columns) < 2:
-        return _dumps({"error": "至少需要 2 列才能计算相关性。"})
-
-    schema = lf.collect_schema()
-    numeric_cols = [c for c in columns if schema[c].is_numeric()]
-    non_numeric = [c for c in columns if c not in numeric_cols]
-
-    if len(numeric_cols) < 2:
-        return _dumps({
-            "error": "数值列不足 2 列，无法计算相关性。",
-            "skipped_non_numeric": non_numeric,
-        })
-
-    # 只计算上三角，避免重复
-    df = lf.select(numeric_cols).collect()
-    pairs = []
-    for i in range(len(numeric_cols)):
-        for j in range(i + 1, len(numeric_cols)):
-            a, b = numeric_cols[i], numeric_cols[j]
-            val = df.select(pl.corr(a, b)).item()
-            pairs.append({
-                "column_a": a,
-                "column_b": b,
-                "correlation": _safe_val(val),
-            })
-
-    # 按绝对值降序，LLM 更容易抓到重点
-    pairs.sort(key=lambda p: abs(p["correlation"] or 0), reverse=True)
-
-    output = {
-        "columns_analyzed": numeric_cols,
-        "pairs": pairs,
-    }
-    if non_numeric:
-        output["skipped_non_numeric"] = non_numeric
-
-    return _dumps(output)
