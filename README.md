@@ -54,12 +54,6 @@ DEEPSEEK_API_KEY=your_key_here
 python main.py --file path/to/your/data.csv
 ```
 
-使用项目中的示例数据：
-
-```bash
-python main.py --file docs/train.csv
-```
-
 运行后将看到交互提示：
 
 ```
