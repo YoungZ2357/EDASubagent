@@ -1,35 +1,35 @@
 # EDASubagent
 
-A conversational EDA (Exploratory Data Analysis) agent for CSV datasets, built with LangGraph. Ask questions in natural language, get instant statistical insights.
+基于 LangGraph 构建的对话式 EDA（探索性数据分析）代理，支持对 CSV 数据集进行自然语言交互式分析。
 
-> **Note**: This is a standalone sub-agent designed to be embedded into a larger orchestrator ([KagglerAssistant](docs/KagglerAssistant_Demo_PRD.md)). The focus is on demonstrating LangGraph's core mechanisms—graph construction, state management, and tool-calling loops—rather than exhaustive analysis coverage.
+> **注意**：本项目是 [LangChain Academy「Intro to LangGraph」](https://academy.langchain.com/courses/take/intro-to-langgraph/lessons/58238107-course-overview) 课程的学习项目。当前代码主要用于实践 LangGraph 的核心机制——图构建、状态管理和工具调用循环——不追求分析功能的完整性。
 
 ---
 
-## What It Can Do
+## 功能概览
 
-Load any CSV and ask questions conversationally. The agent picks the right analysis tool automatically.
+加载任意 CSV 文件，即可通过自然语言与代理对话。代理会自动选择合适的分析工具执行查询。
 
-| Capability | Example Question |
+| 能力 | 示例问题 |
 |---|---|
-| Dataset overview | "这个数据集有哪些列？有多少缺失值？" |
-| Descriptive statistics | "age 和 fare 列的均值、标准差是多少？" |
-| Distribution analysis | "Pclass 列的分布是什么？" |
-| Correlation matrix | "age、fare 和 survived 之间的相关性如何？" |
-| Multi-turn follow-up | "刚才那几列，再看看它们的分布" |
+| 数据集概览 | "这个数据集有哪些列？有多少缺失值？" |
+| 描述性统计 | "age 和 fare 列的均值、标准差是多少？" |
+| 分布分析 | "Pclass 列的分布是什么？" |
+| 相关性矩阵 | "age、fare 和 survived 之间的相关性如何？" |
+| 多轮追问 | "刚才那几列，再看看它们的分布" |
 
-The agent maintains conversation history across turns, so follow-up questions work naturally.
+代理自动维护对话历史，后续追问可以直接引用前文。
 
 ---
 
-## How to Use
+## 使用方法
 
-### 1. Prerequisites
+### 1. 环境要求
 
 - Python 3.10+
-- A [DeepSeek API key](https://platform.deepseek.com/)
+- [DeepSeek API Key](https://platform.deepseek.com/)
 
-### 2. Install
+### 2. 安装
 
 ```bash
 git clone <repo-url>
@@ -40,27 +40,27 @@ python -m venv .venv
 pip install -e .
 ```
 
-### 3. Configure
+### 3. 配置
 
-Create a `.env` file in the project root:
+在项目根目录创建 `.env` 文件：
 
 ```env
 DEEPSEEK_API_KEY=your_key_here
 ```
 
-### 4. Run
+### 4. 运行
 
 ```bash
 python main.py --file path/to/your/data.csv
 ```
 
-Example with the included sample data:
+使用项目中的示例数据：
 
 ```bash
 python main.py --file docs/train.csv
 ```
 
-You'll see a prompt:
+运行后将看到交互提示：
 
 ```
 Dataset loaded: train.csv, input questions to analyze.
@@ -68,89 +68,79 @@ Dataset loaded: train.csv, input questions to analyze.
 你: 
 ```
 
-Type your question in Chinese or English. Type `exit` to quit.
+输入中文或英文问题即可。输入 `exit` 退出。
 
 ---
 
-## Architecture
+## 架构
 
 ```
 START
   │
   ▼
-init_schema          ← loads dataset structure into system prompt
+init_schema          ← 将数据集结构注入 system prompt
   │
-  ▼ (only if user message present)
+  ▼ （仅当存在用户消息时）
 react_node  ◄────────────────────┐
   │                               │
-  ├─ tool call requested? ──YES──► tools (execute analysis)
+  ├─ 需要调用工具？ ──是──► tools（执行分析）
   │
-  └─ NO → END
+  └─ 否 → END
 ```
 
-**Key design decisions:**
+**关键设计决策：**
 
-- **LangGraph ReAct loop**: `react_node` ↔ `tools` cycle until the LLM is satisfied, then returns the final answer.
-- **Polars LazyFrame**: Dataset is loaded lazily—computation defers until a tool actually needs it, keeping memory usage low for large files.
-- **Stateful conversation**: `EDAState` extends LangChain's `MessagesState`, so the full message history is preserved across turns automatically.
-- **Tool-bound LLM**: The four analysis tools are bound to the LLM at config time; the model selects and invokes them autonomously.
+- **LangGraph ReAct 循环**：`react_node` ↔ `tools` 循环执行，直到 LLM 判断可以给出最终回答。
+- **Polars LazyFrame**：数据集采用惰性加载，仅在工具实际需要时才触发计算，对大文件更省内存。
+- **有状态对话**：`EDAState` 继承自 LangChain 的 `MessagesState`，自动保存完整消息历史。
+- **工具绑定 LLM**：四个分析工具在配置阶段绑定到 LLM，模型自主选择并调用。
 
-### Analysis Tools
+### 分析工具
 
-| Tool | Input | What it returns |
+| 工具 | 输入 | 返回值 |
 |---|---|---|
-| `explore_schema` | *(none)* | Column names, dtypes, null counts, unique counts, sample values |
-| `get_descriptive_stats` | `columns: list[str]` | Mean, median, std, Q1, Q3 per numeric column |
-| `get_distribution` | `column: str`, `bins: int` | Histogram (numeric) or frequency table (categorical) |
-| `get_pearson_correlation` | `columns: list[str]` | Pairwise Pearson correlation matrix |
+| `explore_schema` | *(无)* | 列名、数据类型、空值数量、唯一值数量、示例值 |
+| `get_descriptive_stats` | `columns: list[str]` | 每列的均值、中位数、标准差、Q1、Q3 |
+| `get_distribution` | `column: str`, `bins: int` | 直方图（数值列）或频率表（分类列） |
+| `get_pearson_correlation` | `columns: list[str]` | 两两 Pearson 相关系数矩阵 |
 
 ---
 
-## Tech Stack
+## 技术栈
 
-| Layer | Technology |
+| 层级 | 技术 |
 |---|---|
-| Agent framework | LangGraph + LangChain |
-| LLM | DeepSeek (deepseek-chat-v4-flash / v4-pro) |
-| Data processing | Polars (lazy evaluation) |
-| Config | python-dotenv |
+| 代理框架 | LangGraph + LangChain |
+| LLM | DeepSeek（deepseek-chat-v4-flash / v4-pro） |
+| 数据处理 | Polars（惰性求值） |
+| 配置管理 | python-dotenv |
 
 ---
 
-## Project Structure
+## 项目结构
 
 ```
 EDASubagent/
-├── main.py               # CLI entry point
+├── main.py               # CLI 入口
 ├── config/
-│   └── settings.py       # LLM factory, dataset loader
+│   └── settings.py       # LLM 工厂、数据集加载器
 ├── src/eda/
-│   ├── agent.py          # Graph definition and compilation
-│   ├── state.py          # EDAState schema
+│   ├── agent.py          # 图定义与编译
+│   ├── state.py          # EDAState 状态定义
 │   ├── nodes.py          # init_schema, react_node
-│   ├── edges.py          # Conditional routing logic
-│   └── tools.py          # Four EDA analysis tools
-├── tui/
-    └── app.py            # Textual TUI (planned, not yet implemented)
-
+│   ├── edges.py          # 条件路由逻辑
+│   └── tools.py          # 四个 EDA 分析工具
+└── tui/
+    └── app.py            # Textual TUI（规划中，尚未实现）
 ```
 
 ---
 
-## Integration Notes (for KagglerAssistant)
 
-This agent is designed to be called as a sub-agent from an orchestrator. Key integration points:
 
-- **Entry**: Pass an `EDAState` dict with `file_path` set and an initial `HumanMessage` to the compiled graph.
-- **Exit**: The graph returns a final `EDAState`; the last `AIMessage` in `state["messages"]` contains the response.
-- **Streaming**: The graph supports LangGraph's streaming API (`graph.stream(...)`) for token-level output if the orchestrator needs it.
-- **Model swap**: Replace `get_llm()` in `config/settings.py` to use any LangChain-compatible LLM (GPT-4o, Claude, etc.).
+## 已知局限（Demo 范畴）
 
----
-
-## Limitations (Demo Scope)
-
-- **No visualization**: Text-only output; charts are out of scope for this sub-agent.
-- **CSV only**: No Excel, Parquet, or database support.
-- **No test suite**: Unit tests are planned but not implemented.
-- **TUI stub**: The Textual UI shell exists but is not functional yet.
+- **无可视化**：仅支持文本输出，不包含图表功能。
+- **仅限 CSV**：不支持 Excel、Parquet 或数据库等格式。
+- **无测试覆盖**：单元测试尚未实现。
+- **TUI 未完成**：Textual 界面仅有骨架，尚未可用。
