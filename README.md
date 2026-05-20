@@ -72,7 +72,7 @@ Dataset loaded: train.csv, input questions to analyze.
 START
   │
   ▼
-init_schema          ← 将数据集结构注入 system prompt
+init_schema          ← 将数据集结构注入 MessagesState
   │
   ▼ （仅当存在用户消息时）
 react_node  ◄────────────────────┐
