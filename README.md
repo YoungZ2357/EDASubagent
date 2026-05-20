@@ -15,7 +15,7 @@
 | 数据集概览 | "这个数据集有哪些列？有多少缺失值？" |
 | 描述性统计 | "age 和 fare 列的均值、标准差是多少？" |
 | 分布分析 | "Pclass 列的分布是什么？" |
-| 相关性矩阵 | "age、fare 和 survived 之间的相关性如何？" |
+| 相关性分析 | "age、fare 和 survived 之间的相关性如何？" |
 | 多轮追问 | "刚才那几列，再看看它们的分布" |
 
 代理自动维护对话历史，后续追问可以直接引用前文。
@@ -94,9 +94,9 @@ react_node  ◄────────────────────┐
 | 工具 | 输入 | 返回值 |
 |---|---|---|
 | `explore_schema` | *(无)* | 列名、数据类型、空值数量、唯一值数量、示例值 |
-| `get_descriptive_stats` | `columns: list[str]` | 每列的均值、中位数、标准差、Q1、Q3 |
+| `get_descriptive_stats` | `columns: list[str]` | 每列：count、null_count、mean、median、std、min、Q1、Q3、max |
 | `get_distribution` | `column: str`, `bins: int` | 直方图（数值列）或频率表（分类列） |
-| `get_pearson_correlation` | `columns: list[str]` | 两两 Pearson 相关系数矩阵 |
+| `correlation_analysis` | `columns: list[str]` | 自动按列类型选择方法：Pearson（连续v连续）、Cramér's V（分类v分类）、Eta²（分类v连续） |
 
 ---
 
