@@ -2,14 +2,32 @@
 # -------------------------------------------------------------------------
 # ProjectName: EDASubagent
 # FileName: tools.py
-# Date: 2026/5/19 11:02
 # -------------------------------------------------------------------------
 
-from langchain_core.tools import tool  # 工具修饰符
+from langchain_core.tools import tool
 from config.settings import get_lazy_frame
 import polars as pl
+import json
+from math import isnan, isinf
 
-# 不要对工具函数编写Docstring，其内容将作为提示词的一部分
+
+def _safe_val(v):
+    """将 Polars 值转为 JSON 安全的 Python 原生类型。"""
+    if v is None:
+        return None
+    if isinstance(v, float):
+        if isnan(v) or isinf(v):
+            return None
+        return round(v, 6)
+    # polars 的 Int / UInt 系列 → Python int
+    if hasattr(v, "__int__") and not isinstance(v, (bool, str)):
+        return int(v)
+    return str(v)
+
+
+def _dumps(obj: dict | list) -> str:
+    return json.dumps(obj, ensure_ascii=False)
+
 
 @tool
 def explore_schema() -> str:
@@ -26,43 +44,35 @@ def explore_schema() -> str:
     col_names = schema.names()
     dtypes = [schema[name] for name in col_names]
 
-    stats_lf = lf.select([
+    total_rows = lf.select(pl.len()).collect().item()
+
+    stats_df = lf.select([
         pl.all().null_count().name.prefix("null_"),
-        pl.all().n_unique().name.prefix("unique_")
-    ])
+        pl.all().n_unique().name.prefix("unique_"),
+    ]).collect()
 
-    head_lf = lf.limit(3)
+    head_df = lf.limit(3).collect()
 
-    stats_df = stats_lf.collect()
-    head_df = head_lf.collect()
-
-    rows = []
+    columns = []
     for name, dtype in zip(col_names, dtypes):
-        null_cnt = stats_df[0, f"null_{name}"]
-        unique_cnt = stats_df[0, f"unique_{name}"]
-        sample_vals = head_df[name].to_list()
-        sample_str = ", ".join(
-            str(v)[:50] + ("..." if len(str(v)) > 50 else "")
-            for v in sample_vals
-        )
-        rows.append({
-            "column": name,
+        null_cnt = int(stats_df[0, f"null_{name}"])
+        unique_cnt = int(stats_df[0, f"unique_{name}"])
+        samples = [_safe_val(v) for v in head_df[name].to_list()]
+        columns.append({
+            "name": name,
             "dtype": str(dtype),
             "null_count": null_cnt,
+            "null_rate": round(null_cnt / total_rows, 4) if total_rows else 0,
             "n_unique": unique_cnt,
-            "head(3)": sample_str
+            "sample_values": samples,
         })
 
-    overview = pl.DataFrame(rows)
+    return _dumps({
+        "total_rows": total_rows,
+        "total_columns": len(col_names),
+        "columns": columns,
+    })
 
-    with pl.Config(
-        tbl_cols=-1,
-        tbl_rows=-1,
-        tbl_width_chars=300,
-        fmt_str_lengths=60,
-        set_tbl_cell_numeric_alignment="RIGHT"
-    ):
-        return str(overview)
 
 @tool
 def get_descriptive_stats(columns: list[str]) -> str:
@@ -75,115 +85,135 @@ def get_descriptive_stats(columns: list[str]) -> str:
     lf = get_lazy_frame()
 
     if not columns:
-        return "未指定任何列。若列名未知，请先调用 explore_schema 获取数据结构。"
+        return _dumps({"error": "未指定任何列。若列名未知，请先调用 explore_schema 获取数据结构。"})
 
-    # 过滤出数值列
     schema = lf.collect_schema()
     numeric_cols = [c for c in columns if schema[c].is_numeric()]
     non_numeric = [c for c in columns if c not in numeric_cols]
 
     if not numeric_cols:
-        return f"指定的列均为非数值类型（{', '.join(non_numeric)}），无法计算描述性统计。"
+        return _dumps({
+            "error": "指定的列均为非数值类型，无法计算描述性统计。",
+            "non_numeric_columns": non_numeric,
+        })
 
     agg_exprs = []
     for col in numeric_cols:
         agg_exprs.extend([
+            pl.col(col).count().alias(f"{col}__count"),
+            pl.col(col).null_count().alias(f"{col}__null_count"),
             pl.col(col).mean().alias(f"{col}__mean"),
             pl.col(col).median().alias(f"{col}__median"),
             pl.col(col).std().alias(f"{col}__std"),
+            pl.col(col).min().alias(f"{col}__min"),
             pl.col(col).quantile(0.25).alias(f"{col}__q1"),
             pl.col(col).quantile(0.75).alias(f"{col}__q3"),
+            pl.col(col).max().alias(f"{col}__max"),
         ])
 
     stats_row = lf.select(agg_exprs).collect()
 
-    # 直接构建结果，避免 unpivot/pivot
-    rows = []
+    results = []
     for col in numeric_cols:
-        rows.append({
-            "列名": col,
-            "均值": stats_row[0, f"{col}__mean"],
-            "中位数": stats_row[0, f"{col}__median"],
-            "标准差": stats_row[0, f"{col}__std"],
-            "Q1": stats_row[0, f"{col}__q1"],
-            "Q3": stats_row[0, f"{col}__q3"],
+        results.append({
+            "column": col,
+            "count": _safe_val(stats_row[0, f"{col}__count"]),
+            "null_count": _safe_val(stats_row[0, f"{col}__null_count"]),
+            "mean": _safe_val(stats_row[0, f"{col}__mean"]),
+            "median": _safe_val(stats_row[0, f"{col}__median"]),
+            "std": _safe_val(stats_row[0, f"{col}__std"]),
+            "min": _safe_val(stats_row[0, f"{col}__min"]),
+            "q1": _safe_val(stats_row[0, f"{col}__q1"]),
+            "q3": _safe_val(stats_row[0, f"{col}__q3"]),
+            "max": _safe_val(stats_row[0, f"{col}__max"]),
         })
 
-    result = pl.DataFrame(rows)
-
-    output_parts = []
-    with pl.Config(
-        tbl_cols=-1,
-        tbl_rows=-1,
-        tbl_width_chars=300,
-        set_tbl_cell_numeric_alignment="RIGHT",
-        float_precision=2,
-    ):
-        output_parts.append(str(result))
-
+    output = {"stats": results}
     if non_numeric:
-        output_parts.append(f"\n以下列为非数值类型，已跳过：{', '.join(non_numeric)}")
+        output["skipped_non_numeric"] = non_numeric
 
-    return "\n".join(output_parts)
+    return _dumps(output)
+
 
 @tool
 def get_distribution(column: str, bins: int = 10) -> str:
-    """分析指定列的分布情况。数值列返回分箱统计，定类列返回频率表。
-    column必须是精确列名
+    """分析指定列的分布情况。数值列返回分箱统计，分类列返回频率表。
+    column 必须是精确列名。
 
     使用情景：
     - 用户询问某列的分布、频率、最常出现的值或者取值范围
-    -
 
-    不要使用此工具进行描述性统计（均值、标准差等）或相关性分析。
-    """
+    不要使用此工具进行描述性统计（均值、标准差等）或相关性分析。"""
     lf = get_lazy_frame()
     schema = lf.collect_schema()
     dtype = schema[column]
 
     if dtype.is_numeric():
-        # 数值列：分箱统计
         col_data = lf.select(column).collect().to_series()
+        total = len(col_data)
+        null_count = col_data.null_count()
 
         min_val = col_data.min()
         max_val = col_data.max()
         edges = [min_val + i * (max_val - min_val) / bins for i in range(bins + 1)]
 
-        result = (
+        cut_result = (
             col_data
-            .cut(edges[1:-1])  # 内部边界
+            .cut(edges[1:-1])
             .value_counts()
             .sort(column)
         )
 
-        with pl.Config(tbl_rows=-1, tbl_width_chars=300):
-            output = f"列: {column} (数值型)\n"
-            output += f"范围: {min_val} ~ {max_val}\n"
-            output += f"总数: {len(col_data)}, 缺失: {col_data.null_count()}\n\n"
-            output += str(result)
-        return output
+        bin_list = []
+        for row in cut_result.iter_rows(named=True):
+            bin_list.append({
+                "bin": str(row[column]),
+                "count": int(row["count"]),
+            })
+
+        return _dumps({
+            "column": column,
+            "dtype": "numeric",
+            "total": total,
+            "null_count": null_count,
+            "min": _safe_val(min_val),
+            "max": _safe_val(max_val),
+            "bins": bin_list,
+        })
 
     else:
-        # 分类列：频率表
-        result = (
-            lf.select(column)
-            .collect()
-            .to_series()
+        col_series = lf.select(column).collect().to_series()
+        total = len(col_series)
+        null_count = col_series.null_count()
+        full_unique = col_series.n_unique()
+
+        top_n = 20
+        freq_df = (
+            col_series
             .value_counts()
             .sort("count", descending=True)
-            .head(20)  # 避免高基数列输出过长
+            .head(top_n)
         )
 
-        total = lf.select(pl.len()).collect().item()
+        freq_list = []
+        for row in freq_df.iter_rows(named=True):
+            cnt = int(row["count"])
+            freq_list.append({
+                "value": _safe_val(row[column]),
+                "count": cnt,
+                "proportion": round(cnt / total, 4) if total else 0,
+            })
 
-        with pl.Config(tbl_rows=-1, tbl_width_chars=300):
-            output = f"列: {column} (分类型)\n"
-            output += f"总数: {total}, 唯一值: {result.height}"
-            if result.height == 20:
-                output += "（仅展示前 20）"
-            output += "\n\n"
-            output += str(result)
-        return output
+        return _dumps({
+            "column": column,
+            "dtype": "categorical",
+            "total": total,
+            "null_count": null_count,
+            "n_unique": full_unique,
+            "truncated": full_unique > top_n,
+            "frequencies": freq_list,
+        })
+
 
 @tool
 def get_pearson_correlation(columns: list[str]) -> str:
@@ -196,43 +226,39 @@ def get_pearson_correlation(columns: list[str]) -> str:
     lf = get_lazy_frame()
 
     if len(columns) < 2:
-        return "至少需要 2 列才能计算相关性。"
+        return _dumps({"error": "至少需要 2 列才能计算相关性。"})
 
     schema = lf.collect_schema()
     numeric_cols = [c for c in columns if schema[c].is_numeric()]
     non_numeric = [c for c in columns if c not in numeric_cols]
 
     if len(numeric_cols) < 2:
-        return f"数值列不足 2 列，无法计算相关性。非数值列已跳过：{', '.join(non_numeric)}"
+        return _dumps({
+            "error": "数值列不足 2 列，无法计算相关性。",
+            "skipped_non_numeric": non_numeric,
+        })
 
+    # 只计算上三角，避免重复
     df = lf.select(numeric_cols).collect()
-    corr = df.select(
-        pl.corr(a, b).alias(f"{a}__{b}")
-        for a in numeric_cols
-        for b in numeric_cols
-    )
+    pairs = []
+    for i in range(len(numeric_cols)):
+        for j in range(i + 1, len(numeric_cols)):
+            a, b = numeric_cols[i], numeric_cols[j]
+            val = df.select(pl.corr(a, b)).item()
+            pairs.append({
+                "column_a": a,
+                "column_b": b,
+                "correlation": _safe_val(val),
+            })
 
-    # 构建矩阵形式
-    rows = []
-    for i, a in enumerate(numeric_cols):
-        row = {"列名": a}
-        for j, b in enumerate(numeric_cols):
-            row[b] = corr[0, f"{a}__{b}"]
-        rows.append(row)
+    # 按绝对值降序，LLM 更容易抓到重点
+    pairs.sort(key=lambda p: abs(p["correlation"] or 0), reverse=True)
 
-    result = pl.DataFrame(rows)
-
-    output_parts = []
-    with pl.Config(
-        tbl_cols=-1,
-        tbl_rows=-1,
-        tbl_width_chars=300,
-        set_tbl_cell_numeric_alignment="RIGHT",
-        float_precision=3,
-    ):
-        output_parts.append(str(result))
-
+    output = {
+        "columns_analyzed": numeric_cols,
+        "pairs": pairs,
+    }
     if non_numeric:
-        output_parts.append(f"\n以下列为非数值类型，已跳过：{', '.join(non_numeric)}")
+        output["skipped_non_numeric"] = non_numeric
 
-    return "\n".join(output_parts)
+    return _dumps(output)
