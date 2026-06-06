@@ -9,7 +9,7 @@ from config.settings import get_lazy_frame
 import polars as pl
 import json
 from math import isnan, isinf
-
+import math
 
 def _safe_val(v):
     """将 Polars 值转为 JSON 安全的 Python 原生类型。"""

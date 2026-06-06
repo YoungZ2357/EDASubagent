@@ -55,6 +55,8 @@ def get_tool_llm(
     return llm.bind_tools(eda_tools)
 
 
+SUMMARY_TURN_THRESHOLD: int = 4
+
 _lazy_frame: pl.LazyFrame | None = None
 
 def load_dataset(path: str) -> None:

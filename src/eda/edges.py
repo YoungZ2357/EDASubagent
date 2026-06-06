@@ -8,10 +8,16 @@ from langchain_core.messages import HumanMessage
 from langgraph.graph import END
 from langgraph.prebuilt import tools_condition
 
+from config.settings import SUMMARY_TURN_THRESHOLD
+
 
 def after_init_condition(state) -> str:
     has_human = any(isinstance(m, HumanMessage) for m in state["messages"])
-    return "react_node" if has_human else END
+    if not has_human:
+        return END
+    if state.get("turn", 0) >= SUMMARY_TURN_THRESHOLD:
+        return "summarize_conversation"
+    return "react_node"
 
 
 __all__ = ["tools_condition", "after_init_condition"]

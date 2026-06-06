@@ -8,7 +8,7 @@ from langgraph.graph import StateGraph, START
 from langgraph.prebuilt import ToolNode
 
 from src.eda.state import EDAState
-from src.eda.nodes import init_schema, react_node
+from src.eda.nodes import init_schema, react_node, summarize_conversation
 from src.eda.edges import tools_condition, after_init_condition
 from src.eda.tools import (
     explore_schema,
@@ -22,11 +22,17 @@ _tools = [explore_schema, get_descriptive_stats, get_distribution, correlation_a
 builder = StateGraph(EDAState)
 
 builder.add_node("init_schema", init_schema)
+builder.add_node("summarize_conversation", summarize_conversation)
 builder.add_node("react_node", react_node)
 builder.add_node("tools", ToolNode(_tools, handle_tool_errors=True))
 
 builder.add_edge(START, "init_schema")
-builder.add_conditional_edges("init_schema", after_init_condition)
+builder.add_conditional_edges(
+    "init_schema",
+    after_init_condition,
+    {"summarize_conversation": "summarize_conversation", "react_node": "react_node", END: END},
+)
+builder.add_edge("summarize_conversation", "react_node")
 builder.add_conditional_edges("react_node", tools_condition)
 builder.add_edge("tools", "react_node")
 
