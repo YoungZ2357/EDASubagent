@@ -17,7 +17,7 @@ def react_node(state: EDAState):
     if summary:
         summary_msg = SystemMessage(content=f"[历史对话摘要]\n{summary}")
         messages = [messages[0], summary_msg] + messages[1:]
-    return {"messages": [llm.invoke(messages)], "turn": 1}
+    return {"messages": [llm.invoke(messages)]}
 
 
 def init_schema(state: EDAState):
@@ -37,15 +37,23 @@ def init_schema(state: EDAState):
 
 def summarize_conversation(state: EDAState):
     summary = state.get("summary", "")
+    _template = (
+        "[对话摘要]\n"
+        "用户目标：<用户核心分析意图>\n"
+        "已完成操作：<已调用的工具及结果要点，按时间顺序>\n"
+        "关键发现：<分析中的重要结论>\n"
+        "待处理：<未完成的任务或用户最新问题>"
+    )
     if summary:
         prompt = (
-            f"已有摘要：{summary}\n\n"
-            "请基于新增消息扩展摘要，保持下方模板格式，总长度不超过500字："
+            f"已有摘要：\n{summary}\n\n"
+            "请严格按照以下固定模板格式（不得更改字段名称、不得添加额外标题或 Markdown 装饰），"
+            f"将新增消息合并进摘要，总长度不超过500字：\n{_template}"
         )
     else:
         prompt = (
-            "请将以上对话总结为摘要，使用以下模板，总长度不超过500字：\n"
-            "[对话摘要]\n用户目标：...\n已完成操作：...\n关键发现：...\n待处理：..."
+            "请严格按照以下固定模板格式（不得更改字段名称、不得添加额外标题或 Markdown 装饰），"
+            f"将以上对话总结为摘要，总长度不超过500字：\n{_template}"
         )
 
     messages = state["messages"] + [HumanMessage(content=prompt)]
@@ -60,3 +68,7 @@ def summarize_conversation(state: EDAState):
         delete_messages = []
 
     return {"summary": response.content, "messages": delete_messages}
+
+
+def finish_turn(state: EDAState):
+    return {"turn": 1}

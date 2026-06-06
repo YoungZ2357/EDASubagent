@@ -7,9 +7,12 @@
 import argparse
 import os
 from langchain_core.messages import HumanMessage, AIMessage
+from langfuse.langchain import CallbackHandler
 from config.settings import load_dataset
 from src.eda.agent import graph
 from src.eda.state import EDAState
+
+langfuse_handler = CallbackHandler()
 
 
 def main():
@@ -19,11 +22,10 @@ def main():
 
     load_dataset(args.file)
 
-    state = graph.invoke(EDAState(
-        messages=[],
-        file_path=args.file,
-        explored_schema="",
-    ))
+    state = graph.invoke(
+        EDAState(messages=[], file_path=args.file, explored_schema=""),
+        config={"callbacks": [langfuse_handler]},
+    )
     print(f"数据集已加载：{os.path.basename(args.file)}，输入问题开始分析。")
 
     while True:
@@ -37,10 +39,10 @@ def main():
         if not user_input:
             continue
 
-        state = graph.invoke({
-            **state,
-            "messages": state["messages"] + [HumanMessage(content=user_input)],
-        })
+        state = graph.invoke(
+            {**state, "messages": state["messages"] + [HumanMessage(content=user_input)]},
+            config={"callbacks": [langfuse_handler]},
+        )
         _print_last_ai(state)
 
 

@@ -17,4 +17,4 @@ class EDAState(MessagesState):
     file_path: str
     explored_schema: str
     summary: str
-    turn: Annotated[int, _add_turns]
+    turn: Annotated[int, _add_turns] = 0
