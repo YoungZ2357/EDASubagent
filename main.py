@@ -21,7 +21,7 @@ def main():
     args = parser.parse_args()
 
     config = {"callbacks": [langfuse_handler]}
-    state = init_session(EDAInput(file_path=args.file), config=config)
+    thread_id = init_session(EDAInput(file_path=args.file), config=config)
     print(f"数据集已加载：{os.path.basename(args.file)}，输入问题开始分析。")
 
     while True:
@@ -35,7 +35,7 @@ def main():
         if not user_input:
             continue
 
-        state, output = ask(state, user_input, config=config)
+        output = ask(thread_id, user_input, config=config)
         print(f"\nAssistant: {output.answer}")
 
 
