@@ -130,6 +130,9 @@ EDASubagent/
 
 ---
 
+## 当前Agent图结构
+
+<img width="419" height="456" alt="graph" src="https://github.com/user-attachments/assets/fdca79d9-05b6-4e63-b9d0-fa9b5b599360" />
 
 
 ## 已知局限（Demo 范畴）
