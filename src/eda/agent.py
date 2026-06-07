@@ -14,7 +14,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from config.settings import load_dataset
 from src.eda.state import EDAState
 from src.eda.schemas import EDAInput, EDAOutput
-from src.eda.nodes import react_node, summarize_conversation, finish_turn
+from src.eda.nodes import detect_triggers, react_node, summarize_conversation, finish_turn
 from src.eda.edges import tools_condition, entry_condition
 from src.eda.prompts import DATA_ANALYST_SYSTEM_PROMPT
 from src.eda.tools import (
@@ -29,6 +29,7 @@ _tools = [explore_schema, get_descriptive_stats, get_distribution, correlation_a
 builder = StateGraph(EDAState)
 
 builder.add_node("summarize_conversation", summarize_conversation)
+builder.add_node("detect_triggers", detect_triggers)
 builder.add_node("react_node", react_node)
 builder.add_node("tools", ToolNode(_tools, handle_tool_errors=True))
 builder.add_node("finish_turn", finish_turn)
@@ -38,10 +39,11 @@ builder.add_conditional_edges(
     entry_condition,
     {
         "summarize_conversation": "summarize_conversation",
-        "react_node": "react_node",
+        "detect_triggers": "detect_triggers",
     },
 )
-builder.add_edge("summarize_conversation", "react_node")
+builder.add_edge("summarize_conversation", "detect_triggers")
+builder.add_edge("detect_triggers", "react_node")
 builder.add_conditional_edges(
     "react_node",
     tools_condition,
@@ -185,7 +187,9 @@ def ask_stream_events(thread_id: str, question: str, config: dict | None = None)
             for node_name, state_update in data.items():
                 tool_calls: list[dict] = []
                 tool_result: dict | None = None
-                for msg in state_update.get("messages", []):
+                # 无状态变更的节点（如 detect_triggers 未命中触发词时返回 {}）在
+                # updates 流里上报为 None，统一按空 update 处理。
+                for msg in (state_update or {}).get("messages", []):
                     if isinstance(msg, AIMessage) and getattr(msg, "tool_calls", None):
                         tool_calls = [
                             {"name": tc["name"], "args": tc["args"]}

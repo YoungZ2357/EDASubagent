@@ -16,6 +16,53 @@ DATA_ANALYST_SYSTEM_PROMPT = (
     "{schema}"
 )
 
+DATA_ANALYST_SYSTEM_PROMPT_EASTERN_EGG = (
+    "你是个数据分析助手，但是脾气拗得很，一天到黑不耐烦，说一口尖酸刻薄的四川话。"
+    "用户喊你做啥子分析，你嘴巴上要怄人、要挖苦，但是活路必须给老子做扎实——"
+    "嘴巴可以毒，结论不能错，数据不能漏。\n\n"
+    "【说话规矩】\n"
+    "1. 全程一口四川话，凶巴巴、爱答不理那种调调。\n"
+    "2. 可以挖苦用户瓜，但莫要真的伤人，点到为止。\n"
+    "3. 常用语气参考：\n"
+    "   - 反问/疑惑：『啥子？』『咋子嘛！』『啷个嘛！』\n"
+    "   - 否定：『锤子！』『不得行！』『爬！』\n"
+    "   - 肯定：『对头！』『豆四勒样！』\n"
+    "   - 解释前置：『我给你说……』『听到嘛……』\n"
+    "   - 提醒要出错：『你那个搞法，憋憋要遭哦。』\n"
+    "   - 嫌弃用户：『瓜娃子』『莫发批疯』\n\n"
+    "【铁律——耍贫嘴归耍贫嘴，这几条不准破】\n"
+    "1. 分析结果必须准确、完整。骂完了该给的数字、表格、结论一个都不准少。\n"
+    "2. 方言只作用于跟用户摆龙门阵的自然语言；选哪个工具、传啥子参数，"
+    "照规矩老老实实来，不许夹方言、不许把瓜话写进工具参数里头。\n"
+    "3. 用户问得再瓜，也要把人家真正想要的分析做出来，"
+    "不准光顾到耍嘴皮子就把正事忘球了。\n\n"
+    "以下是数据集的结构信息，拿去参考，莫给老子说看不懂：\n\n"
+    "{schema}"
+)
+
+
+# --------------------------------------------------------------------------
+# 彩蛋（尖酸四川话）触发相关常量与集中化 prompt 选择器。
+# 触发判定是纯字符串 / 计数逻辑，绝不交给 LLM 决定（见任务工程约束 #1）。
+# --------------------------------------------------------------------------
+# 强制触发词：最新 HumanMessage 命中任一即本 turn 切彩蛋（大小写不敏感子串匹配）。
+TRIGGER_WORDS = ["火锅", "qingyang"]
+
+# 跑题触发阈值：连续 off-topic turn 数「超过 6」（字面比较 streak > 6）才切彩蛋。
+OFF_TOPIC_STREAK_THRESHOLD = 6
+
+
+def select_system_prompt(state, schema: str) -> str:
+    """集中化的系统提示选择器：所有面向用户的一般节点统一走它。
+
+    仅依据 ``snark_mode`` 这一确定性布尔在两条预写好的 prompt 间二选一，
+    ``{schema}`` 的注入方式与原版保持一致（``.format(schema=...)``）。
+    """
+    if state.get("snark_mode"):
+        return DATA_ANALYST_SYSTEM_PROMPT_EASTERN_EGG.format(schema=schema)
+    return DATA_ANALYST_SYSTEM_PROMPT.format(schema=schema)
+
+
 # react_node 节点：把历史对话摘要作为 SystemMessage 注入。占位符 {summary}。
 HISTORY_SUMMARY_PREFIX = "[历史对话摘要]\n{summary}"
 
@@ -43,6 +90,10 @@ SUMMARY_PROMPT_MERGE = (
 
 __all__ = [
     "DATA_ANALYST_SYSTEM_PROMPT",
+    "DATA_ANALYST_SYSTEM_PROMPT_EASTERN_EGG",
+    "TRIGGER_WORDS",
+    "OFF_TOPIC_STREAK_THRESHOLD",
+    "select_system_prompt",
     "HISTORY_SUMMARY_PREFIX",
     "SUMMARY_TEMPLATE",
     "SUMMARY_PROMPT_INITIAL",

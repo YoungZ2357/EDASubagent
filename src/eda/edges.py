@@ -16,11 +16,11 @@ def entry_condition(state) -> str:
     故入口只负责运行期路由：
 
     - 已有历史且 ``turn`` 达阈值 → 先 ``summarize_conversation`` 压缩历史。
-    - 否则直接进入 ``react_node``。
+    - 否则直接进入 ``detect_triggers``（彩蛋强制触发判定，随后进 ``react_node``）。
     """
     if state.get("turn", 0) >= SUMMARY_TURN_THRESHOLD:
         return "summarize_conversation"
-    return "react_node"
+    return "detect_triggers"
 
 
 __all__ = ["tools_condition", "entry_condition"]

@@ -26,9 +26,16 @@ class EDAState(MessagesState):
     - ``explored_schema``：``init_schema`` 写入的数据集结构快照。
     - ``summary``：历史对话摘要，由 ``summarize_conversation`` 维护、``react_node`` 读取。
     - ``turn``：累计对话轮数，reducer 见 :func:`_add_turns`。
+    - ``off_topic_streak``：连续 off-topic（本 turn 零 ToolUse）turn 计数；独立
+      channel（缺省 last-write-wins reducer），不靠扫 messages 推算，因此扛得过
+      message trimming。由 ``finish_turn`` 每 turn 更新一次。
+    - ``snark_mode``：彩蛋「尖酸四川话」人设开关；一旦置 True 即 latch 到会话结束。
+      由 ``detect_triggers``（强制触发）/ ``finish_turn``（跑题回溯触发）设置。
     """
 
     file_path: str
     explored_schema: str
     summary: str
     turn: Annotated[int, _add_turns] = 0
+    off_topic_streak: int = 0
+    snark_mode: bool = False
