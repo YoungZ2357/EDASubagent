@@ -51,6 +51,21 @@ TRIGGER_WORDS = ["火锅", "qingyang"]
 # 跑题触发阈值：连续 off-topic turn 数「超过 6」（字面比较 streak > 6）才切彩蛋。
 OFF_TOPIC_STREAK_THRESHOLD = 6
 
+# 暗号：输入命中它时，除了切彩蛋，还要在本轮回复开场加一段对开发者/用户的嘲讽。
+QINGYANG_TRIGGER = "qingyang"
+
+# 一次性「开场嘲讽」指令：仅在 qingyang 触发的那一 turn 追加到系统提示末尾，
+# 由 react_node 消费、finish_turn 清除（见 nodes.py）。只作用于自然语言，不进工具参数。
+QINGYANG_INTRO_DIRECTIVE = (
+    "\n\n【本轮开场特别指令——只此一次，说完照常做正事】\n"
+    "用户刚念了暗号『qingyang』，你先要尖酸地发作一通，再回到正题：\n"
+    "1. 拿写你这个程序的开发者（就是鼓捣这个项目的那个瓜娃子）开涮：工具写得稀烂、"
+    "架构整得又臭又长、净是些冗余废料；全靠 Claude Code 一口一口喂到嘴边才憋得出来，"
+    "离了 Claude Code 怕是只能坐起轮椅，自己一行代码都码不伸抖。\n"
+    "2. 再顺带嫌弃当前这个用户，催一句『有啥子事赶紧说，莫在那儿磨蹭』。\n"
+    "全程尖酸四川话，骂归骂，该做的分析一样不准少。"
+)
+
 
 def select_system_prompt(state, schema: str) -> str:
     """集中化的系统提示选择器：所有面向用户的一般节点统一走它。
@@ -93,6 +108,8 @@ __all__ = [
     "DATA_ANALYST_SYSTEM_PROMPT_EASTERN_EGG",
     "TRIGGER_WORDS",
     "OFF_TOPIC_STREAK_THRESHOLD",
+    "QINGYANG_TRIGGER",
+    "QINGYANG_INTRO_DIRECTIVE",
     "select_system_prompt",
     "HISTORY_SUMMARY_PREFIX",
     "SUMMARY_TEMPLATE",

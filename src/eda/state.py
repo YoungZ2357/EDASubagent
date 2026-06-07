@@ -31,6 +31,9 @@ class EDAState(MessagesState):
       message trimming。由 ``finish_turn`` 每 turn 更新一次。
     - ``snark_mode``：彩蛋「尖酸四川话」人设开关；一旦置 True 即 latch 到会话结束。
       由 ``detect_triggers``（强制触发）/ ``finish_turn``（跑题回溯触发）设置。
+    - ``qingyang_intro_pending``：一次性信号；输入命中暗号 ``qingyang`` 时置 True，
+      本 turn 由 ``react_node`` 在系统提示末尾追加「开场嘲讽」指令，``finish_turn``
+      于 turn 末清除，故仅作用于触发那一轮的首次回复。
     """
 
     file_path: str
@@ -39,3 +42,4 @@ class EDAState(MessagesState):
     turn: Annotated[int, _add_turns] = 0
     off_topic_streak: int = 0
     snark_mode: bool = False
+    qingyang_intro_pending: bool = False
