@@ -6,7 +6,7 @@
 # -------------------------------------------------------------------------
 from uuid import uuid4
 
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import MemorySaver
@@ -14,8 +14,9 @@ from langgraph.checkpoint.memory import MemorySaver
 from config.settings import load_dataset
 from src.eda.state import EDAState
 from src.eda.schemas import EDAInput, EDAOutput
-from src.eda.nodes import init_schema, react_node, summarize_conversation, finish_turn
-from src.eda.edges import tools_condition, entry_condition, after_init_condition
+from src.eda.nodes import react_node, summarize_conversation, finish_turn
+from src.eda.edges import tools_condition, entry_condition
+from src.eda.prompts import DATA_ANALYST_SYSTEM_PROMPT
 from src.eda.tools import (
     explore_schema,
     get_descriptive_stats,
@@ -27,7 +28,6 @@ _tools = [explore_schema, get_descriptive_stats, get_distribution, correlation_a
 
 builder = StateGraph(EDAState)
 
-builder.add_node("init_schema", init_schema)
 builder.add_node("summarize_conversation", summarize_conversation)
 builder.add_node("react_node", react_node)
 builder.add_node("tools", ToolNode(_tools, handle_tool_errors=True))
@@ -37,15 +37,9 @@ builder.add_conditional_edges(
     START,
     entry_condition,
     {
-        "init_schema": "init_schema",
         "summarize_conversation": "summarize_conversation",
         "react_node": "react_node",
     },
-)
-builder.add_conditional_edges(
-    "init_schema",
-    after_init_condition,
-    {"react_node": "react_node", END: END},
 )
 builder.add_edge("summarize_conversation", "react_node")
 builder.add_conditional_edges(
@@ -82,21 +76,34 @@ def _with_thread(config: dict | None, thread_id: str) -> dict:
     return cfg
 
 
+def _seed_state(file_path: str) -> dict:
+    """在图外完成 schema 探索并构造初始 state（等价于原 ``init_schema`` 节点体）：
+    探索数据集结构、注入分析师系统提示，作为该会话的种子写入 checkpoint。"""
+    schema_str = explore_schema.invoke({})
+    system_prompt = DATA_ANALYST_SYSTEM_PROMPT.format(schema=schema_str)
+    return {
+        "file_path": file_path,
+        "explored_schema": schema_str,
+        "messages": [SystemMessage(content=system_prompt)],
+    }
+
+
 def init_session(inp: EDAInput, config: dict | None = None) -> str:
     """加载数据集并开启一次会话，返回该会话的 ``thread_id``。
 
-    本次 invoke 触发 ``init_schema`` 运行一次（每会话仅此一次），把数据集结构快照
-    写入该 thread 的 checkpoint；后续记忆由 :func:`ask` 经 checkpointer 自动延续，
+    schema 初始化在图外完成：经 :func:`_seed_state` 探索数据集结构后，用
+    ``graph.update_state`` 把种子 state（系统提示 + 结构快照）直接写入该 thread 的
+    checkpoint（每会话仅此一次）；后续记忆由 :func:`ask` 经 checkpointer 自动延续，
     调用方无需持有 ``EDAState``。
 
     ``inp.question`` 为预留字段，当前不在初始化时发起首轮提问。
-    ``config`` 透传给 ``graph.invoke``（如 callbacks）。
+    ``config`` 透传给 checkpointer 配置（如 callbacks）。
     """
     load_dataset(inp.file_path)
     thread_id = uuid4().hex
-    graph.invoke(
-        {"messages": [], "file_path": inp.file_path, "explored_schema": ""},
-        config=_with_thread(config, thread_id),
+    graph.update_state(
+        _with_thread(config, thread_id),
+        _seed_state(inp.file_path),
     )
     return thread_id
 

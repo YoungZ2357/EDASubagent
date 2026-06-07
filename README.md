@@ -130,7 +130,9 @@ EDASubagent/
 
 ---
 
+## 当前Agent图结构
 
+![](docs/graph.png)
 
 ## 已知局限（Demo 范畴）
 

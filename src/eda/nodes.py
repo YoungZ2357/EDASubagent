@@ -8,7 +8,6 @@ from langchain_core.messages import HumanMessage, RemoveMessage, SystemMessage
 
 from src.eda.state import EDAState
 from src.eda.prompts import (
-    DATA_ANALYST_SYSTEM_PROMPT,
     HISTORY_SUMMARY_PREFIX,
     SUMMARY_TEMPLATE,
     SUMMARY_PROMPT_INITIAL,
@@ -25,17 +24,6 @@ def react_node(state: EDAState):
         summary_msg = SystemMessage(content=HISTORY_SUMMARY_PREFIX.format(summary=summary))
         messages = [messages[0], summary_msg] + messages[1:]
     return {"messages": [llm.invoke(messages)]}
-
-
-def init_schema(state: EDAState):
-    from src.eda.tools import explore_schema
-
-    schema_str = explore_schema.invoke({})
-    system_prompt = DATA_ANALYST_SYSTEM_PROMPT.format(schema=schema_str)
-    return {
-        "explored_schema": schema_str,
-        "messages": [SystemMessage(content=system_prompt)],
-    }
 
 
 def summarize_conversation(state: EDAState):

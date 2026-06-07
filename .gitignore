@@ -181,6 +181,5 @@ cython_debug/
 .cursorindexingignore
 
 .idea
-docs
-graph.png
 draw_graph.py
+docs/local

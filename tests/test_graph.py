@@ -37,7 +37,7 @@ def test_graph_compiles():
 
 def test_init_session_loads_schema(csv_path):
     thread_id = init_session(EDAInput(file_path=csv_path))
-    # 初始化只跑 init_schema（无 HumanMessage → 直接 END），写入结构快照。
+    # 初始化在图外完成：update_state 写入结构快照与系统提示，不跑任何节点。
     state = _state_of(thread_id)
     assert state["explored_schema"]
     assert state.get("turn", 0) == 0
@@ -51,7 +51,7 @@ def test_ask_single_turn(csv_path):
 
 
 def test_init_schema_runs_once(csv_path):
-    """回归：init_schema 仅在会话开始运行一次，后续轮次不重复探索/重复注入系统提示。"""
+    """回归：schema 初始化仅在会话开始（init_session）做一次，后续轮次不重复注入系统提示。"""
     thread_id = init_session(EDAInput(file_path=csv_path))
     for i in range(3):
         output = ask(thread_id, f"第 {i} 个问题")
