@@ -183,3 +183,4 @@ cython_debug/
 .idea
 draw_graph.py
 docs/local
+/scripts

@@ -1,0 +1,70 @@
+/* ── 全局布局 ── */
+
+Header {
+    dock: top;
+}
+
+Input {
+    dock: bottom;
+}
+
+#hitl-bar {
+    dock: bottom;
+    height: 1;
+    background: $warning;
+    color: $text;
+    padding: 0 1;
+}
+
+#main {
+    height: 1fr;
+}
+
+/* ── 左栏：对话区 ── */
+
+#chat-col {
+    width: 60%;
+    border-right: tall $panel;
+}
+
+RichLog#chat-log {
+    height: 1fr;
+    padding: 0 1;
+}
+
+#streaming-msg {
+    height: auto;
+    max-height: 10;
+    padding: 0 1;
+    border-top: dashed $panel;
+    color: $text;
+}
+
+/* ── 右栏：三面板 ── */
+
+#right-col {
+    width: 40%;
+}
+
+.panel-title {
+    height: 1;
+    background: $panel;
+    color: $text-muted;
+    padding: 0 1;
+    text-style: bold;
+}
+
+DataTable#data-overview {
+    height: 2fr;
+    border-bottom: solid $panel;
+}
+
+DataTable#analysis-results {
+    height: 3fr;
+    border-bottom: solid $panel;
+}
+
+RichLog#agent-trace {
+    height: 2fr;
+    padding: 0 1;
+}

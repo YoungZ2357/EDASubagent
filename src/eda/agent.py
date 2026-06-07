@@ -141,4 +141,81 @@ def ask_stream(thread_id: str, question: str, config: dict | None = None):
             yield chunk.content
 
 
-__all__ = ["graph", "init_session", "ask", "ask_stream"]
+def ask_stream_events(thread_id: str, question: str, config: dict | None = None):
+    """TUI 专用流式接口：双模式 streaming，yield 类型化事件 dict。
+
+    事件类型：
+      {"type": "node_active", "node": str}
+          LLM 节点开始 token 输出（实时，来自 messages 路）。
+      {"type": "token", "content": str}
+          单个 LLM token（左栏对话区消费）。
+      {"type": "node_done", "node": str, "tool_calls": list, "tool_result": dict | None}
+          节点执行完毕（来自 updates 路）。
+          tool_calls: react_node AIMessage 上的工具调用列表。
+          tool_result: tools 节点 ToolMessage 解析后的结构化结果（JSON dict）。
+    """
+    import json
+    from langchain_core.messages import ToolMessage
+
+    cfg = _with_thread(config, thread_id)
+    _current_node: str | None = None
+
+    for mode, data in graph.stream(
+        {"messages": [HumanMessage(content=question)]},
+        config=cfg,
+        stream_mode=["updates", "messages"],
+    ):
+        if mode == "messages":
+            chunk, metadata = data
+            node = metadata.get("langgraph_node")
+            if node and node != _current_node:
+                _current_node = node
+                yield {"type": "node_active", "node": node}
+            # 仅 react_node 的 token 进左栏对话区；summarize_conversation 等
+            # 其它 LLM 节点的输出不应泄漏到用户可见的回答里。
+            if (
+                node == "react_node"
+                and isinstance(chunk, AIMessageChunk)
+                and chunk.content
+            ):
+                yield {"type": "token", "content": chunk.content}
+
+        elif mode == "updates":
+            _current_node = None
+            for node_name, state_update in data.items():
+                tool_calls: list[dict] = []
+                tool_result: dict | None = None
+                for msg in state_update.get("messages", []):
+                    if isinstance(msg, AIMessage) and getattr(msg, "tool_calls", None):
+                        tool_calls = [
+                            {"name": tc["name"], "args": tc["args"]}
+                            for tc in msg.tool_calls
+                        ]
+                    elif isinstance(msg, ToolMessage):
+                        try:
+                            tool_result = json.loads(msg.content)
+                        except (json.JSONDecodeError, TypeError, ValueError):
+                            pass
+                yield {
+                    "type": "node_done",
+                    "node": node_name,
+                    "tool_calls": tool_calls,
+                    "tool_result": tool_result,
+                }
+
+
+def get_explored_schema(thread_id: str) -> str:
+    """从 checkpoint 读取 explored_schema channel，返回 JSON 字符串。"""
+    cfg = _with_thread(None, thread_id)
+    state = graph.get_state(cfg)
+    return state.values.get("explored_schema", "{}")
+
+
+__all__ = [
+    "graph",
+    "init_session",
+    "ask",
+    "ask_stream",
+    "ask_stream_events",
+    "get_explored_schema",
+]

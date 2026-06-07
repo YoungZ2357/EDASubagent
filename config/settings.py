@@ -57,6 +57,10 @@ def get_tool_llm(
 
 SUMMARY_TURN_THRESHOLD: int = 4
 
+# HITL 功能开关：True 时 TUI 渲染确认状态条且 graph 配置 interrupt。
+# 当前 HITL 尚未实现，保持 False 直到 Module 4 开始。
+HITL_ENABLED: bool = False
+
 _lazy_frame: pl.LazyFrame | None = None
 
 def load_dataset(path: str) -> None:

@@ -5,40 +5,16 @@
 # Date: 2026/5/19
 # -------------------------------------------------------------------------
 import argparse
-import os
 
-from langfuse.langchain import CallbackHandler
-
-from src.eda.agent import init_session, ask_stream
-from src.eda.schemas import EDAInput
-
-langfuse_handler = CallbackHandler()
+from tui.app import EDAApp
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="EDA Sub-Agent")
     parser.add_argument("--file", required=True, help="CSV 文件路径")
     args = parser.parse_args()
 
-    config = {"callbacks": [langfuse_handler]}
-    thread_id = init_session(EDAInput(file_path=args.file), config=config)
-    print(f"数据集已加载：{os.path.basename(args.file)}，输入问题开始分析。")
-
-    while True:
-        try:
-            user_input = input("\n你: ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print("\n退出。")
-            break
-        if user_input.lower() in {"exit", "quit"}:
-            break
-        if not user_input:
-            continue
-
-        print("\nAssistant: ", end="", flush=True)
-        for chunk in ask_stream(thread_id, user_input, config=config):
-            print(chunk, end="", flush=True)
-        print()
+    EDAApp(file_path=args.file).run()
 
 
 if __name__ == "__main__":
