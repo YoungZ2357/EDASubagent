@@ -54,39 +54,64 @@ DEEPSEEK_API_KEY=your_key_here
 python main.py --file path/to/your/data.csv
 ```
 
-运行后将看到交互提示：
+启动后进入 **Textual 终端界面（TUI，布局 B：双栏 + Agent 行为栏）**：
 
 ```
-Dataset loaded: train.csv, input questions to analyze.
-
-你: 
+┌──────────────────────────────┬──────────────────────────────┐
+│ 对话区                       │ 数据概览（列/类型/缺失/唯一值）│
+│  你: age 列的分布            ├──────────────────────────────┤
+│  助手: age 右偏，集中 20–40▌ │ 分析结果（工具输出表格）       │
+│  （流式叙述文本）            ├──────────────────────────────┤
+│                              │ Agent 行为（ReAct 循环实时流水）│
+├──────────────────────────────┴──────────────────────────────┤
+│ > ▌                                                          │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-输入中文或英文问题即可。输入 `exit` 退出。
+- **左栏**：对话区，助手回答逐 token 流式呈现；底部为输入框，回车提交。
+- **右栏（三块常驻）**：
+  - *数据概览*——加载时填充一次的列结构表；
+  - *分析结果*——工具返回的结构化数据，由界面**确定性渲染**为表格（非 LLM 逐字打印）；
+  - *Agent 行为*——实时显示 ReAct 循环正在执行的节点与工具调用（如 `tools  get_distribution(column='age')`）。
+
+输入中文或英文问题即可，`Ctrl+Q` 退出。
+
+### 5. 测试
+
+```bash
+pip install -e ".[test]"   # 安装测试依赖（如尚未安装）
+pytest
+```
+
+`tests/` 覆盖图编译与路由（`test_graph.py`）、对外契约（`test_schemas.py`）与分析工具（`test_tools.py`）。
 
 ---
 
 ## 架构
 
 ```
-START
+init_session（图外）   ← 探索数据集结构 + 注入系统提示，作为种子写入 checkpoint
   │
   ▼
-init_schema          ← 将数据集结构注入 MessagesState
-  │
-  ▼ （仅当存在用户消息时）
-react_node  ◄────────────────────┐
-  │                               │
-  ├─ 需要调用工具？ ──是──► tools（执行分析）
-  │
-  └─ 否 → END
+START
+  │  entry_condition：turn 达阈值？
+  ├─是─► summarize_conversation（压缩历史）─┐
+  │                                          ▼
+  └─否─────────────────────────────► react_node ◄────────┐
+                                        │                  │
+                                        ├─ 需要调用工具？ ─是─► tools（执行分析）
+                                        │
+                                        └─否─► finish_turn ─► END
 ```
 
 **关键设计决策：**
 
 - **LangGraph ReAct 循环**：`react_node` ↔ `tools` 循环执行，直到 LLM 判断可以给出最终回答。
-- **Polars LazyFrame**：数据集采用惰性加载，仅在工具实际需要时才触发计算，对大文件更省内存。
-- **有状态对话**：`EDAState` 继承自 LangChain 的 `MessagesState`，自动保存完整消息历史。
+- **schema 初始化外置**：数据集结构探索在图外的 `init_session` 完成，经 `update_state` 把种子 state（系统提示 + 结构快照）写入 checkpoint，避免每轮 invoke 重复探索。
+- **持久化记忆（MemorySaver）**：`graph` 编译时挂载进程内 checkpointer，按 `thread_id` 隔离/恢复各会话，调用方无需手动持有 `EDAState`。
+- **长对话压缩**：累计轮数达 `SUMMARY_TURN_THRESHOLD` 时，`summarize_conversation` 节点摘要并裁剪历史消息（保留最近两轮）。
+- **双模式流式**：TUI 通过 `agent.py` 的 `ask_stream_events` 单循环消费 `stream_mode=["updates","messages"]`——`messages` 路把 token 送入对话区，`updates` 路驱动 Agent 行为栏与分析结果表格。
+- **契约解耦**：调用方仅依赖 `schemas.py` 的 `EDAInput`/`EDAOutput` 与 `agent.py` 暴露的公共接口，不感知 graph 内部消息结构。
 - **工具绑定 LLM**：四个分析工具在配置阶段绑定到 LLM，模型自主选择并调用。
 
 ### 分析工具
@@ -105,9 +130,11 @@ react_node  ◄────────────────────┐
 | 层级 | 技术 |
 |---|---|
 | 代理框架 | LangGraph + LangChain |
-| LLM | DeepSeek（deepseek-chat-v4-flash / v4-pro） |
+| LLM | DeepSeek（deepseek-v4-flash / v4-pro） |
+| 终端界面 | Textual（双栏 TUI + 流式渲染） |
 | 数据处理 | Polars（惰性求值） |
 | 配置管理 | python-dotenv |
+| 可观测性 | Langfuse（可选 callback） |
 
 ---
 
@@ -115,17 +142,20 @@ react_node  ◄────────────────────┐
 
 ```
 EDASubagent/
-├── main.py               # CLI 入口
+├── main.py               # 入口：解析 --file 并启动 TUI
 ├── config/
-│   └── settings.py       # LLM 工厂、数据集加载器
+│   └── settings.py       # LLM 工厂、数据集加载器、HITL 开关
 ├── src/eda/
-│   ├── agent.py          # 图定义与编译
+│   ├── agent.py          # 图定义/编译 + 公共接口（init_session, ask, ask_stream_events…）
 │   ├── state.py          # EDAState 状态定义
-│   ├── nodes.py          # init_schema, react_node
-│   ├── edges.py          # 条件路由逻辑
+│   ├── schemas.py        # EDAInput / EDAOutput 对外契约
+│   ├── nodes.py          # react_node, summarize_conversation, finish_turn
+│   ├── edges.py          # entry_condition / tools_condition 路由
+│   ├── prompts.py        # 系统提示与摘要模板
 │   └── tools.py          # 四个 EDA 分析工具
 └── tui/
-    └── app.py            # Textual TUI（规划中，尚未实现）
+    ├── app.py            # Textual TUI 应用（布局 B）
+    └── app.tcss          # TUI 样式表
 ```
 
 ---
@@ -136,7 +166,7 @@ EDASubagent/
 
 ## 已知局限（Demo 范畴）
 
-- **无可视化**：仅支持文本输出，不包含图表功能。
+- **无可视化**：仅文本与表格输出，不含图表功能。
 - **仅限 CSV**：不支持 Excel、Parquet 或数据库等格式。
-- **无测试覆盖**：单元测试尚未实现。
-- **TUI 未完成**：Textual 界面仅有骨架，尚未可用。
+- **HITL 未实现**：human-in-the-loop 由 `config/settings.py` 的 `HITL_ENABLED` 开关控制，当前默认关闭（graph 暂未配置 interrupt）。
+- **Agent 行为栏粒度**：trace 为节点级（节点/工具调用），不展开节点内部细分步骤。
