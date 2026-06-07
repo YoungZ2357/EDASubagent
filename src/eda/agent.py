@@ -6,7 +6,7 @@
 # -------------------------------------------------------------------------
 from uuid import uuid4
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import MemorySaver
@@ -125,4 +125,20 @@ def ask(thread_id: str, question: str, config: dict | None = None) -> EDAOutput:
     )
 
 
-__all__ = ["graph", "init_session", "ask"]
+def ask_stream(thread_id: str, question: str, config: dict | None = None):
+    """流式版本的 ask：逐 token yield react_node 的 LLM 回复内容。"""
+    cfg = _with_thread(config, thread_id)
+    for chunk, metadata in graph.stream(
+        {"messages": [HumanMessage(content=question)]},
+        config=cfg,
+        stream_mode="messages",
+    ):
+        if (
+            isinstance(chunk, AIMessageChunk)
+            and chunk.content
+            and metadata.get("langgraph_node") == "react_node"
+        ):
+            yield chunk.content
+
+
+__all__ = ["graph", "init_session", "ask", "ask_stream"]

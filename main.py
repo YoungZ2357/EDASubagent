@@ -9,7 +9,7 @@ import os
 
 from langfuse.langchain import CallbackHandler
 
-from src.eda.agent import init_session, ask
+from src.eda.agent import init_session, ask_stream
 from src.eda.schemas import EDAInput
 
 langfuse_handler = CallbackHandler()
@@ -35,8 +35,10 @@ def main():
         if not user_input:
             continue
 
-        output = ask(thread_id, user_input, config=config)
-        print(f"\nAssistant: {output.answer}")
+        print("\nAssistant: ", end="", flush=True)
+        for chunk in ask_stream(thread_id, user_input, config=config):
+            print(chunk, end="", flush=True)
+        print()
 
 
 if __name__ == "__main__":
