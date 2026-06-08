@@ -4,8 +4,17 @@ Header {
     dock: top;
 }
 
-Input {
+#input-area {
     dock: bottom;
+    height: auto;
+}
+
+#command-completion {
+    display: none;
+    height: auto;
+    max-height: 8;
+    border: round $primary;
+    background: $surface;
 }
 
 #hitl-bar {
@@ -67,4 +76,31 @@ DataTable#analysis-results {
 RichLog#agent-trace {
     height: 2fr;
     padding: 0 1;
+}
+
+/* ── API Key 设置弹窗 ── */
+SetSecretKeyScreen {
+    align: center middle;
+}
+
+#secret-key-dialog {
+    width: 60;
+    height: auto;
+    border: round $primary;
+    background: $surface;
+    padding: 1 2;
+}
+
+#sk-title {
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#sk-buttons {
+    margin-top: 1;
+    height: auto;
+}
+
+#sk-confirm {
+    margin-right: 1;
 }

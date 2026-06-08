@@ -19,17 +19,28 @@
 import json
 import os
 import random
+from pathlib import Path
 from typing import Any
 
 from rich.text import Text
+from textual import events
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.message import Message
-from textual.widgets import DataTable, Header, Input, Label, RichLog, Static
+from textual.widgets import (
+    DataTable,
+    Header,
+    Input,
+    Label,
+    OptionList,
+    RichLog,
+    Static,
+)
 
 from config.settings import HITL_ENABLED
 from eda.agent import ask_stream_events, get_explored_schema, init_session
 from eda.schemas import EDAInput
+from tui.screens import _COMMANDS, SetSecretKeyScreen
 
 _GREETINGS = ["请讲！", "快点把问题端上来罢", "冲刺！冲刺！冲！冲！"]
 
@@ -66,6 +77,49 @@ class StreamEvent(Message):
     def __init__(self, event: dict[str, Any]) -> None:
         self.event = event
         super().__init__()
+
+
+# ── 输入框（带斜杠命令内联补全的导航键拦截）────────────────────────────────
+class CommandInput(Input):
+    """普通单行输入框，但当上方补全栏可见时拦截 ↑/↓/Tab/Esc。
+
+    补全栏（``#command-completion``）由 EDAApp 维护显隐；本类只负责在它可见时
+    把导航键转成对补全列表的操作，避免被 Input 默认行为（或焦点切换）吞掉。
+    """
+
+    def _completion(self) -> OptionList | None:
+        try:
+            comp = self.app.query_one("#command-completion", OptionList)
+        except Exception:  # noqa: BLE001 — 补全栏尚未挂载时静默跳过
+            return None
+        return comp if comp.display else None
+
+    def on_key(self, event: events.Key) -> None:
+        comp = self._completion()
+        if comp is None:
+            return
+        if event.key == "down":
+            comp.action_cursor_down()
+            event.prevent_default()
+            event.stop()
+        elif event.key == "up":
+            comp.action_cursor_up()
+            event.prevent_default()
+            event.stop()
+        elif event.key == "tab":
+            idx = comp.highlighted
+            if idx is not None:
+                # option 的 id 存的是命令 display（形如 "/set-secret-key"）
+                display = comp.get_option_at_index(idx).id
+                if display:
+                    self.value = f"{display} "
+                    self.cursor_position = len(self.value)
+            event.prevent_default()
+            event.stop()
+        elif event.key == "escape":
+            comp.display = False
+            event.prevent_default()
+            event.stop()
 
 
 # ── 主应用 ─────────────────────────────────────────────────────────────────
@@ -109,7 +163,10 @@ class EDAApp(App[None]):
                 id="hitl-bar",
                 markup=False,
             )
-        yield Input(placeholder="> ", id="user-input", disabled=True)
+        # 底部输入区：补全栏（默认隐藏）置于输入框上方。
+        with Vertical(id="input-area"):
+            yield OptionList(id="command-completion")
+            yield CommandInput(placeholder="> ", id="user-input", disabled=True)
 
     # ── 生命周期 ───────────────────────────────────────────────────────────
     def on_mount(self) -> None:
@@ -175,19 +232,81 @@ class EDAApp(App[None]):
             self._enable_input()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
-        question = event.value.strip()
-        if not question or not self._session_id:
+        value = event.value.strip()
+        if not value:
+            return
+
+        # 斜杠命令：本地分发，不发给 agent。
+        if value.startswith("/"):
+            event.input.value = ""
+            self.query_one("#command-completion", OptionList).display = False
+            cmd_id = value[1:].split()[0] if len(value) > 1 else ""
+            known = {c[0] for c in _COMMANDS}
+            if cmd_id in known:
+                self._dispatch_command(cmd_id)
+            else:
+                self.notify(f"未知命令：/{cmd_id}", severity="warning")
+            return
+
+        if not self._session_id:
             return
         event.input.value = ""
         event.input.disabled = True
         self._streaming_buf = ""
         self._streaming_dirty = False
         self.query_one("#chat-log", RichLog).write(
-            Text.assemble(("你: ", "bold blue"), (question, ""))
+            Text.assemble(("你: ", "bold blue"), (value, ""))
         )
         self.run_worker(
-            lambda: self._stream_worker(question), thread=True, name="stream"
+            lambda: self._stream_worker(value), thread=True, name="stream"
         )
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        comp = self.query_one("#command-completion", OptionList)
+        if event.value.startswith("/") and not event.input.disabled:
+            self._update_completion(event.value, comp)
+        else:
+            comp.display = False
+
+    def _update_completion(self, value: str, comp: OptionList) -> None:
+        """按 ``/`` 后的前缀过滤命令，重填补全栏并控制显隐。"""
+        from textual.widgets.option_list import Option
+
+        prefix = value[1:].lower()
+        matches = [c for c in _COMMANDS if c[0].lower().startswith(prefix)]
+        comp.clear_options()
+        for cmd_id, display, desc in matches:
+            # 用 display 作为 option id，供 Tab 补全回读。
+            comp.add_option(Option(f"{display}  {desc}", id=display))
+        comp.display = bool(matches)
+        if matches:
+            comp.highlighted = 0
+
+    def _dispatch_command(self, cmd_id: str) -> None:
+        if cmd_id == "set-secret-key":
+            self.push_screen(SetSecretKeyScreen(), self._on_secret_key_entered)
+
+    def _on_secret_key_entered(self, key: str | None) -> None:
+        if not key:
+            return
+        env_path = Path(__file__).parent.parent.parent / ".env"
+        if env_path.exists():
+            lines = env_path.read_text(encoding="utf-8").splitlines(keepends=True)
+            found = False
+            new_lines = []
+            for line in lines:
+                if line.startswith("DEEPSEEK_API_KEY="):
+                    new_lines.append(f"DEEPSEEK_API_KEY={key}\n")
+                    found = True
+                else:
+                    new_lines.append(line)
+            if not found:
+                new_lines.insert(0, f"DEEPSEEK_API_KEY={key}\n")
+            env_path.write_text("".join(new_lines), encoding="utf-8")
+        else:
+            env_path.write_text(f"DEEPSEEK_API_KEY={key}\n", encoding="utf-8")
+        os.environ["DEEPSEEK_API_KEY"] = key
+        self.notify("DeepSeek API Key 已保存", severity="information")
 
     # ── 流式回答（左栏）──────────────────────────────────────────────────
     def _flush_streaming(self) -> None:
