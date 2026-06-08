@@ -6,8 +6,8 @@
 # -------------------------------------------------------------------------
 from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage, SystemMessage
 
-from src.eda.state import EDAState
-from src.eda.prompts import (
+from eda.state import EDAState
+from eda.prompts import (
     HISTORY_SUMMARY_PREFIX,
     SUMMARY_TEMPLATE,
     SUMMARY_PROMPT_INITIAL,

@@ -18,6 +18,7 @@
 """
 import json
 import os
+import random
 from typing import Any
 
 from rich.text import Text
@@ -27,8 +28,10 @@ from textual.message import Message
 from textual.widgets import DataTable, Header, Input, Label, RichLog, Static
 
 from config.settings import HITL_ENABLED
-from src.eda.agent import ask_stream_events, get_explored_schema, init_session
-from src.eda.schemas import EDAInput
+from eda.agent import ask_stream_events, get_explored_schema, init_session
+from eda.schemas import EDAInput
+
+_GREETINGS = ["请讲！", "快点把问题端上来罢", "冲刺！冲刺！冲！冲！"]
 
 # ── 节点名称映射（显示用）──────────────────────────────────────────────────
 _NODE_LABELS: dict[str, str] = {
@@ -140,6 +143,9 @@ class EDAApp(App[None]):
 
         if t == "init_done":
             self._populate_schema(e["schema"])
+            self.query_one("#chat-log", RichLog).write(
+                Text.assemble(("助手: ", "bold green"), (random.choice(_GREETINGS), ""))
+            )
             self._enable_input()
 
         elif t == "token":

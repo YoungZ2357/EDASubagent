@@ -10,6 +10,9 @@ description = "EDA subagent for KagglerAsisstant"
 readme = "README.md"
 requires-python = ">=3.10"
 
+[project.scripts]
+eda-agent = "eda.cli:main"
+
 dependencies = [
     "langchain-core",
     "langgraph",
@@ -25,6 +28,9 @@ test = [
     "pytest",
 ]
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/eda", "src/tui", "src/config"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["."]
+pythonpath = ["src"]

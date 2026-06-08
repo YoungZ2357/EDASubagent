@@ -6,7 +6,7 @@
 """工具函数单测：直接调用 @tool，脱离 graph 运行时（PRD §8.3 #4）。"""
 import json
 
-from src.eda.tools import (
+from eda.tools import (
     explore_schema,
     get_descriptive_stats,
     get_distribution,

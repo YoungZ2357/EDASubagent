@@ -12,12 +12,12 @@ from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import MemorySaver
 
 from config.settings import load_dataset
-from src.eda.state import EDAState
-from src.eda.schemas import EDAInput, EDAOutput
-from src.eda.nodes import detect_triggers, react_node, summarize_conversation, finish_turn
-from src.eda.edges import tools_condition, entry_condition
-from src.eda.prompts import DATA_ANALYST_SYSTEM_PROMPT
-from src.eda.tools import (
+from eda.state import EDAState
+from eda.schemas import EDAInput, EDAOutput
+from eda.nodes import detect_triggers, react_node, summarize_conversation, finish_turn
+from eda.edges import tools_condition, entry_condition
+from eda.prompts import DATA_ANALYST_SYSTEM_PROMPT
+from eda.tools import (
     explore_schema,
     get_descriptive_stats,
     get_distribution,

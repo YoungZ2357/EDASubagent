@@ -7,9 +7,9 @@
 import pytest
 from langchain_core.messages import AIMessage, SystemMessage
 
-import src.eda.nodes as nodes
-from src.eda.agent import graph, init_session, ask
-from src.eda.schemas import EDAInput
+import eda.nodes as nodes
+from eda.agent import graph, init_session, ask
+from eda.schemas import EDAInput
 
 
 def _state_of(thread_id: str) -> dict:

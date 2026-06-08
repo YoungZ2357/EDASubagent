@@ -7,7 +7,7 @@
 import pytest
 from pydantic import ValidationError
 
-from src.eda.schemas import EDAInput, EDAOutput
+from eda.schemas import EDAInput, EDAOutput
 
 
 def test_eda_input_minimal():

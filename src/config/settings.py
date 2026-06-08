@@ -43,7 +43,7 @@ def get_tool_llm(
     获取已绑定 EDA 工具的 ChatDeepSeek 对象。
     工具列表从 src.eda.tools 延迟导入，避免循环引用。
     """
-    from src.eda.tools import (
+    from eda.tools import (
         explore_schema,
         get_descriptive_stats,
         get_distribution,

@@ -48,8 +48,14 @@ def _cramers_v(df: pl.DataFrame, col_a: str, col_b: str) -> float | None:
     col_totals = ct.group_by(col_b).agg(pl.col("observed").sum().alias("col_total"))
 
     ct = ct.join(row_totals, on=col_a).join(col_totals, on=col_b)
+    # 显式升位到 Float64：row_total * col_total 在大数据集上会超出
+    # UInt32 上限（~4.29e9），Polars 不会自动升位，导致整数溢出。
     ct = ct.with_columns(
-        (pl.col("row_total") * pl.col("col_total") / n).alias("expected")
+        (
+            pl.col("row_total").cast(pl.Float64)
+            * pl.col("col_total").cast(pl.Float64)
+            / n
+        ).alias("expected")
     )
 
     chi2 = ct.select(
