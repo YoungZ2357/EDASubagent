@@ -9,10 +9,6 @@ version = "0.0.1"
 description = "EDA subagent for KagglerAsisstant"
 readme = "README.md"
 requires-python = ">=3.10"
-
-[project.scripts]
-eda-agent = "eda.cli:main"
-
 dependencies = [
     "langchain-core",
     "langgraph",
@@ -27,6 +23,9 @@ dependencies = [
 test = [
     "pytest",
 ]
+
+[project.scripts]
+eda-agent = "eda.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/eda", "src/tui", "src/config"]

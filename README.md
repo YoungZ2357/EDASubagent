@@ -37,6 +37,12 @@ cd EDASubagent
 python -m venv .venv
 .venv\Scripts\activate        # Windows
 # source .venv/bin/activate   # macOS/Linux
+pip install .
+```
+
+开发模式（代码改动即时生效，无需重装）：
+
+```bash
 pip install -e .
 ```
 
@@ -46,9 +52,22 @@ pip install -e .
 
 ```env
 DEEPSEEK_API_KEY=your_key_here
+
+# 可选：Langfuse 可观测性
+# LANGFUSE_SECRET_KEY=sk-lf-...
+# LANGFUSE_PUBLIC_KEY=pk-lf-...
+# LANGFUSE_BASE_URL=https://cloud.langfuse.com
 ```
 
 ### 4. 运行
+
+安装后可直接使用命令行入口：
+
+```bash
+eda-agent --file path/to/your/data.csv
+```
+
+或在项目根目录通过 Python 脚本运行（开发时）：
 
 ```bash
 python main.py --file path/to/your/data.csv
@@ -142,20 +161,23 @@ START
 
 ```
 EDASubagent/
-├── main.py               # 入口：解析 --file 并启动 TUI
-├── config/
-│   └── settings.py       # LLM 工厂、数据集加载器、HITL 开关
-├── src/eda/
-│   ├── agent.py          # 图定义/编译 + 公共接口（init_session, ask, ask_stream_events…）
-│   ├── state.py          # EDAState 状态定义
-│   ├── schemas.py        # EDAInput / EDAOutput 对外契约
-│   ├── nodes.py          # react_node, summarize_conversation, finish_turn
-│   ├── edges.py          # entry_condition / tools_condition 路由
-│   ├── prompts.py        # 系统提示与摘要模板
-│   └── tools.py          # 四个 EDA 分析工具
-└── tui/
-    ├── app.py            # Textual TUI 应用（布局 B）
-    └── app.tcss          # TUI 样式表
+├── main.py               # 开发入口（委托给 eda.cli:main）
+├── pyproject.toml        # 包配置；eda-agent 命令在此声明
+└── src/
+    ├── config/
+    │   └── settings.py   # LLM 工厂、数据集加载器、HITL 开关
+    ├── eda/
+    │   ├── cli.py        # eda-agent 命令行入口
+    │   ├── agent.py      # 图定义/编译 + 公共接口（init_session, ask, ask_stream_events…）
+    │   ├── state.py      # EDAState 状态定义
+    │   ├── schemas.py    # EDAInput / EDAOutput 对外契约
+    │   ├── nodes.py      # react_node, summarize_conversation, finish_turn
+    │   ├── edges.py      # entry_condition / tools_condition 路由
+    │   ├── prompts.py    # 系统提示与摘要模板
+    │   └── tools.py      # 四个 EDA 分析工具
+    └── tui/
+        ├── app.py        # Textual TUI 应用（布局 B）
+        └── app.tcss      # TUI 样式表
 ```
 
 ---
@@ -168,5 +190,5 @@ EDASubagent/
 
 - **无可视化**：仅文本与表格输出，不含图表功能。
 - **仅限 CSV**：不支持 Excel、Parquet 或数据库等格式。
-- **HITL 未实现**：human-in-the-loop 由 `config/settings.py` 的 `HITL_ENABLED` 开关控制，当前默认关闭（graph 暂未配置 interrupt）。
+- **HITL 未实现**：human-in-the-loop 由 `src/config/settings.py` 的 `HITL_ENABLED` 开关控制，当前默认关闭（graph 暂未配置 interrupt）。
 - **Agent 行为栏粒度**：trace 为节点级（节点/工具调用），不展开节点内部细分步骤。
